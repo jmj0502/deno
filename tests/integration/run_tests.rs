@@ -4242,6 +4242,43 @@ async fn http2_request_url() {
   child.wait().unwrap();
 }
 
+#[tokio::test]
+async fn no_export_named_http2_server() {
+  let mut child = util::deno_cmd()
+    .current_dir(util::tests_path())
+    .env("NPM_CONFIG_REGISTRY", String::from("https://registry.npmjs.org"))
+    .arg("run")
+    .arg("--allow-net")
+    .arg("./testdata/node/no_export_named_http2_server_request.ts")
+    .stdout_piped()
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0;15];
+  let read = stdout.read(&mut buffer).unwrap();
+  let msg = std::str::from_utf8(&buffer).unwrap();
+
+  let cert = reqwest::Certificate::from_pem(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  ))
+  .unwrap();
+
+  let client = reqwest::Client::builder()
+    .add_root_certificate(cert)
+    .http2_prior_knowledge()
+    .build()
+    .unwrap();
+
+  let res = client.get("http://127.0.0.1:3000").send().await.unwrap();
+  assert_eq!(200, res.status());
+
+  let body = res.text().await.unwrap();
+  assert_eq!(body, "http://127.0.0.1:3000/");
+
+  child.kill().unwrap();
+  child.wait().unwrap();
+}
+
 #[cfg(not(windows))]
 #[test]
 fn set_raw_should_not_panic_on_no_tty() {
